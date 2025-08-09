@@ -9,8 +9,8 @@ st.title("📊 Universal Log & Event Analyzer")
 st.markdown("Upload CSV, Excel, JSON, TXT, PDF, or Word files for automated parsing, filtering, and summary.")
 
 uploaded_files = st.file_uploader(
-    "Upload your log or data files", 
-    type=["csv", "xls", "xlsx", "json", "txt", "pdf", "docx"], 
+    "Upload your log or data files",
+    type=["csv", "xls", "xlsx", "json", "txt", "pdf", "docx"],
     accept_multiple_files=True
 )
 
@@ -51,9 +51,8 @@ if uploaded_files:
 
         # Summary
         st.subheader("📄 Executive Summary")
-        st.markdown(f"```
-{generate_summary(cleaned_df)}
-```")
+        summary_text = generate_summary(cleaned_df)
+        st.markdown(f"```text\n{summary_text}\n```")
 
         # Event Table
         st.subheader("📋 Event Details")
@@ -72,3 +71,4 @@ if uploaded_files:
 
     else:
         st.warning("No valid data parsed from uploaded files.")
+
