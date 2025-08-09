@@ -22,3 +22,4 @@ def draw_root_cause_diagram(df):
     plt.figure(figsize=(8,6))
     nx.draw(G, with_labels=True, node_color="skyblue", node_size=1500, font_size=8)
     return plt
+    
