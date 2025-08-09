@@ -1,0 +1,8 @@
+streamlit
+pandas
+plotly
+matplotlib
+networkx
+pdfplumber
+python-docx
+openpyxl
