@@ -47,7 +47,32 @@ def clean_events(df):
 
 def generate_summary(df):
     total = len(df)
-    critical_count = df[df.get("Severity", "").str.lower() == "critical"].shape[0] if "Severity" in df.columns else 0
-    top_alarms = df["Alarm Name"].value_counts().head(3).to_dict() if "Alarm Name" in df.columns else {}
-    return f"Period: {df['Raise Date'].min()} to {df['Raise Date'].max()}\nTotal Events: {total}\nCritical Events: {critical_count}\nTop Alarms: {top_alarms}"
+
+    # Safe check for Severity
+    if "Severity" in df.columns:
+        critical_count = df[df["Severity"].str.lower() == "critical"].shape[0]
+    else:
+        critical_count = 0
+
+    # Safe check for Alarm Name
+    if "Alarm Name" in df.columns:
+        top_alarms = df["Alarm Name"].value_counts().head(3).to_dict()
+    else:
+        top_alarms = {}
+
+    # Safe check for Raise Date
+    if "Raise Date" in df.columns:
+        min_date = pd.to_datetime(df["Raise Date"], errors="coerce").min()
+        max_date = pd.to_datetime(df["Raise Date"], errors="coerce").max()
+        period_str = f"Period: {min_date} to {max_date}"
+    else:
+        period_str = "Period: N/A"
+
+    return (
+        f"{period_str}\n"
+        f"Total Events: {total}\n"
+        f"Critical Events: {critical_count}\n"
+        f"Top Alarms: {top_alarms}"
+    )
+
 
