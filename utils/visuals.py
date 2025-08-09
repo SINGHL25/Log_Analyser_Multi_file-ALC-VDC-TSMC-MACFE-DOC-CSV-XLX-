@@ -66,3 +66,9 @@ def draw_root_cause_diagram_pil(events):
         y += 20
 
     return img
+
+
+# --- Backward compatibility aliases for app.py ---
+plot_timeline = plot_timeline_altair
+draw_root_cause_diagram = draw_root_cause_diagram_pil
+
