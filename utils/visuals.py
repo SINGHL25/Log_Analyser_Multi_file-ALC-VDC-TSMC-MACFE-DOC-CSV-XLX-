@@ -1,6 +1,7 @@
-import plotly.express as px
 import pandas as pd
-import altair as alt
+import plotly.express as px
+from PIL import Image, ImageDraw
+
 
 # Plot alarm/event counts
 def plot_counts(df):
@@ -12,7 +13,7 @@ def plot_counts(df):
     elif "Severity" in df.columns:
         x_col = "Severity"
     else:
-        x_col = df.columns[0]  # fallback to first column
+        x_col = df.columns[0]  # fallback
 
     return px.histogram(
         df,
@@ -22,35 +23,35 @@ def plot_counts(df):
     )
 
 
-# Timeline plot
-def plot_timeline_altair(df):
+# Timeline plot (Plotly version for app.py compatibility)
+def plot_timeline(df):
     if df.empty or "Raise Date" not in df.columns:
-        return alt.Chart(pd.DataFrame({"No timeline data": []})).mark_text(text="No timeline data")
+        return px.scatter(pd.DataFrame({"No data": []}), x="No data", y="No data", title="No timeline data")
 
     df_t = df.copy()
     df_t["Raise Date"] = pd.to_datetime(df_t["Raise Date"], errors="coerce")
     df_t = df_t.dropna(subset=["Raise Date"])
 
     if df_t.empty:
-        return alt.Chart(pd.DataFrame({"No timeline data": []})).mark_text(text="No timeline data")
+        return px.scatter(pd.DataFrame({"No data": []}), x="No data", y="No data", title="No timeline data")
 
-    x_col = "Raise Date"
+    y_col = "Alarm Name" if "Alarm Name" in df_t.columns else df_t.columns[0]
     color_col = "Severity" if "Severity" in df_t.columns else None
 
-    chart = alt.Chart(df_t).mark_circle(size=60).encode(
-        x=x_col,
-        y=alt.Y("Alarm Name", sort=None) if "Alarm Name" in df_t.columns else alt.Y("index", sort=None),
-        color=color_col if color_col else alt.value("blue"),
-        tooltip=list(df_t.columns)
-    ).properties(title="Event Timeline", width=700, height=400)
+    fig = px.scatter(
+        df_t,
+        x="Raise Date",
+        y=y_col,
+        color=color_col,
+        title="Event Timeline",
+        hover_data=list(df_t.columns)
+    )
 
-    return chart
+    return fig
 
 
-# Root cause diagram placeholder (still functional if no data)
-def draw_root_cause_diagram_pil(events):
-    from PIL import Image, ImageDraw
-
+# Root cause diagram placeholder
+def draw_root_cause_diagram(events):
     img = Image.new("RGB", (600, 400), "white")
     draw = ImageDraw.Draw(img)
 
@@ -59,13 +60,13 @@ def draw_root_cause_diagram_pil(events):
         return img
 
     draw.text((10, 10), "Root Cause Diagram", fill="black")
-
     y = 50
-    for event in events[:10]:  # limit to 10 events for diagram
+    for event in events[:10]:  # limit to 10
         draw.text((10, y), str(event), fill="blue")
         y += 20
 
     return img
+
 
 
 # --- Backward compatibility aliases for app.py ---
