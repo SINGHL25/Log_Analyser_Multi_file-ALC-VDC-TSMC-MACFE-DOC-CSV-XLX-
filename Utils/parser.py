@@ -49,9 +49,5 @@ def generate_summary(df):
     total = len(df)
     critical_count = df[df.get("Severity", "").str.lower() == "critical"].shape[0] if "Severity" in df.columns else 0
     top_alarms = df["Alarm Name"].value_counts().head(3).to_dict() if "Alarm Name" in df.columns else {}
-    return f"""
-Period: {df['Raise Date'].min()} to {df['Raise Date'].max()}
-Total Events: {total}
-Critical Events: {critical_count}
-Top Alarms: {top_alarms}
-"""
+    return f"Period: {df['Raise Date'].min()} to {df['Raise Date'].max()}\nTotal Events: {total}\nCritical Events: {critical_count}\nTop Alarms: {top_alarms}"
+
