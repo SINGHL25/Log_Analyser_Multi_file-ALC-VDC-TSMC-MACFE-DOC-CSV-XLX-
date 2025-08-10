@@ -6,3 +6,6 @@ networkx
 pdfplumber
 python-docx
 openpyxl
+pillow
+openpyxl
+python-dateutil
