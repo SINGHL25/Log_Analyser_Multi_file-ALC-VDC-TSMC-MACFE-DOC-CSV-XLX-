@@ -12,64 +12,80 @@ def load_file(uploaded_file):
         return pd.read_json(uploaded_file)
     else:
         text = uploaded_file.read().decode("utf-8", errors="ignore")
-        return parse_text_log(text)
+        return parse_text_log(text, uploaded_file.name)
 
-def parse_text_log(text):
+def parse_text_log(text, source_name=""):
     rows = []
     for line in text.splitlines():
         line = line.strip()
+        if not line:
+            continue
 
-        # --- TSMC alarm style ---
-        match_tsmc = re.search(r"(/W/|/I/|/E/)?Alarm\s+([^\s]+)\s+has been\s+(raised|terminated)", line, re.IGNORECASE)
-        if match_tsmc:
-            severity = "Warning" if match_tsmc.group(1) == "/W/" else "Info" if match_tsmc.group(1) == "/I/" else "Error"
+        # 1) TSMC alarms
+        m_tsmc = re.search(r"(/W/|/I/|/E/)?Alarm\s+([^\s]+)\s+has been\s+(raised|terminated)", line, re.IGNORECASE)
+        if m_tsmc:
+            severity = {"": "Info", "/W/": "Warning", "/I/": "Info", "/E/": "Error"}.get(m_tsmc.group(1) or "", "Info")
             rows.append({
                 "Device Name": "TSMC",
-                "Alarm Name": match_tsmc.group(2),
+                "Alarm Name": m_tsmc.group(2),
                 "Severity": severity,
-                "Status": match_tsmc.group(3).capitalize(),
-                "Raise Date": None,
+                "Status": m_tsmc.group(3).capitalize(),
+                "Raise Date": extract_datetime(line),
                 "Terminated Date": None,
-                "Message": line
+                "Message": line,
+                "source_file": source_name
             })
             continue
 
-        # --- McAfee/McScript style ---
-        match_mcafee = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+\S+\s+#\d+\s+(\S+)\s+(.*)$", line)
-        if match_mcafee:
-            ts = pd.to_datetime(match_mcafee.group(1), errors="coerce")
-            module = match_mcafee.group(2)
-            msg = match_mcafee.group(3)
+        # 2) McAfee style
+        m_mcafee = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", line)
+        if m_mcafee:
+            ts = pd.to_datetime(m_mcafee.group(1), errors="coerce")
             severity = "Info"
-            if "error" in msg.lower():
+            if "error" in line.lower():
                 severity = "Error"
-            elif "fail" in msg.lower():
+            elif "fail" in line.lower():
                 severity = "Critical"
-
             rows.append({
-                "Device Name": module,
-                "Alarm Name": module,
+                "Device Name": "McAfee",
+                "Alarm Name": None,
                 "Severity": severity,
                 "Status": "Info",
                 "Raise Date": ts,
                 "Terminated Date": None,
-                "Message": msg
+                "Message": line,
+                "source_file": source_name
             })
             continue
 
-        # --- Fallback: generic log line ---
-        if line:
-            rows.append({
-                "Device Name": "Unknown",
-                "Alarm Name": None,
-                "Severity": "Info",
-                "Status": "Info",
-                "Raise Date": None,
-                "Terminated Date": None,
-                "Message": line
-            })
+        # 3) Generic catch-all
+        rows.append({
+            "Device Name": "Unknown",
+            "Alarm Name": None,
+            "Severity": "Info",
+            "Status": "Info",
+            "Raise Date": extract_datetime(line),
+            "Terminated Date": None,
+            "Message": line,
+            "source_file": source_name
+        })
 
     return pd.DataFrame(rows)
+
+def extract_datetime(text):
+    """Extract first timestamp-like pattern from text."""
+    patterns = [
+        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}",
+        r"\d{8}/\d{2}:\d{2}:\d{2}\.\d+"
+    ]
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            try:
+                return pd.to_datetime(m.group(0), errors="coerce")
+            except:
+                pass
+    return pd.NaT
 
 def clean_events(df):
     for col in ["Raise Date", "Terminated Date"]:
@@ -83,7 +99,8 @@ def generate_summary(df):
     period = f"{df['Raise Date'].min()} to {df['Raise Date'].max()}" if "Raise Date" in df.columns else "N/A"
     total = len(df)
     critical_count = (df["Severity"].str.lower() == "critical").sum()
-    top_alarms = df["Alarm Name"].value_counts().head(3).to_dict()
+    top_alarms = df["Alarm Name"].dropna().value_counts().head(3).to_dict()
     return f"Period: {period}\nTotal Events: {total}\nCritical Events: {critical_count}\nTop Alarms: {top_alarms}"
+
 
 
