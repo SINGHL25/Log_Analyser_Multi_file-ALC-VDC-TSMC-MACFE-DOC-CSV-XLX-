@@ -1,78 +1,89 @@
 import pandas as pd
-import json
-import docx
-import pdfplumber
+import re
+from datetime import datetime
 
-def load_file(file):
-    ext = file.name.split(".")[-1].lower()
-    if ext in ["csv"]:
-        return pd.read_csv(file)
-    elif ext in ["xls", "xlsx"]:
-        return pd.read_excel(file)
-    elif ext == "json":
-        return pd.json_normalize(json.load(file))
-    elif ext == "txt":
-        return parse_txt(file)
-    elif ext == "pdf":
-        return parse_pdf(file)
-    elif ext == "docx":
-        return parse_docx(file)
+def load_file(uploaded_file):
+    filename = uploaded_file.name.lower()
+    if filename.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
+    elif filename.endswith((".xls", ".xlsx")):
+        return pd.read_excel(uploaded_file)
+    elif filename.endswith(".json"):
+        return pd.read_json(uploaded_file)
     else:
-        return None
+        text = uploaded_file.read().decode("utf-8", errors="ignore")
+        return parse_text_log(text)
 
-def parse_txt(file):
-    lines = file.read().decode(errors="ignore").splitlines()
-    return pd.DataFrame({"raw_line": lines})
+def parse_text_log(text):
+    rows = []
+    for line in text.splitlines():
+        line = line.strip()
 
-def parse_pdf(file):
-    text_data = []
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            text_data.extend(page.extract_text().splitlines())
-    return pd.DataFrame({"raw_line": text_data})
+        # --- TSMC alarm style ---
+        match_tsmc = re.search(r"(/W/|/I/|/E/)?Alarm\s+([^\s]+)\s+has been\s+(raised|terminated)", line, re.IGNORECASE)
+        if match_tsmc:
+            severity = "Warning" if match_tsmc.group(1) == "/W/" else "Info" if match_tsmc.group(1) == "/I/" else "Error"
+            rows.append({
+                "Device Name": "TSMC",
+                "Alarm Name": match_tsmc.group(2),
+                "Severity": severity,
+                "Status": match_tsmc.group(3).capitalize(),
+                "Raise Date": None,
+                "Terminated Date": None,
+                "Message": line
+            })
+            continue
 
-def parse_docx(file):
-    doc = docx.Document(file)
-    lines = [p.text for p in doc.paragraphs if p.text.strip()]
-    return pd.DataFrame({"raw_line": lines})
+        # --- McAfee/McScript style ---
+        match_mcafee = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+\S+\s+#\d+\s+(\S+)\s+(.*)$", line)
+        if match_mcafee:
+            ts = pd.to_datetime(match_mcafee.group(1), errors="coerce")
+            module = match_mcafee.group(2)
+            msg = match_mcafee.group(3)
+            severity = "Info"
+            if "error" in msg.lower():
+                severity = "Error"
+            elif "fail" in msg.lower():
+                severity = "Critical"
+
+            rows.append({
+                "Device Name": module,
+                "Alarm Name": module,
+                "Severity": severity,
+                "Status": "Info",
+                "Raise Date": ts,
+                "Terminated Date": None,
+                "Message": msg
+            })
+            continue
+
+        # --- Fallback: generic log line ---
+        if line:
+            rows.append({
+                "Device Name": "Unknown",
+                "Alarm Name": None,
+                "Severity": "Info",
+                "Status": "Info",
+                "Raise Date": None,
+                "Terminated Date": None,
+                "Message": line
+            })
+
+    return pd.DataFrame(rows)
 
 def clean_events(df):
-    df2 = df.copy()
     for col in ["Raise Date", "Terminated Date"]:
-        if col in df2.columns:
-            df2[col] = pd.to_datetime(df2[col], errors="coerce")
-    if "Severity" in df2.columns:
-        df2["Severity"] = df2["Severity"].fillna("Unknown")
-    return df2, 0
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+    return df
 
 def generate_summary(df):
+    if df.empty:
+        return "No events found."
+    period = f"{df['Raise Date'].min()} to {df['Raise Date'].max()}" if "Raise Date" in df.columns else "N/A"
     total = len(df)
-
-    # Safe check for Severity
-    if "Severity" in df.columns:
-        critical_count = df[df["Severity"].str.lower() == "critical"].shape[0]
-    else:
-        critical_count = 0
-
-    # Safe check for Alarm Name
-    if "Alarm Name" in df.columns:
-        top_alarms = df["Alarm Name"].value_counts().head(3).to_dict()
-    else:
-        top_alarms = {}
-
-    # Safe check for Raise Date
-    if "Raise Date" in df.columns:
-        min_date = pd.to_datetime(df["Raise Date"], errors="coerce").min()
-        max_date = pd.to_datetime(df["Raise Date"], errors="coerce").max()
-        period_str = f"Period: {min_date} to {max_date}"
-    else:
-        period_str = "Period: N/A"
-
-    return (
-        f"{period_str}\n"
-        f"Total Events: {total}\n"
-        f"Critical Events: {critical_count}\n"
-        f"Top Alarms: {top_alarms}"
-    )
+    critical_count = (df["Severity"].str.lower() == "critical").sum()
+    top_alarms = df["Alarm Name"].value_counts().head(3).to_dict()
+    return f"Period: {period}\nTotal Events: {total}\nCritical Events: {critical_count}\nTop Alarms: {top_alarms}"
 
 
