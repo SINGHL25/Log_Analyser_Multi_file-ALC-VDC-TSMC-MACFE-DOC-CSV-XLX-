@@ -3,8 +3,11 @@ import plotly.express as px
 from PIL import Image, ImageDraw
 
 
-# Plot alarm/event counts
+# ============================================
+# Plot histogram of event counts
+# ============================================
 def plot_counts(df):
+    """Plot a histogram of event counts by Alarm Name or Severity."""
     if df.empty:
         return px.histogram(pd.DataFrame({"No data": []}), x="No data", title="No events to plot")
 
@@ -13,18 +16,22 @@ def plot_counts(df):
     elif "Severity" in df.columns:
         x_col = "Severity"
     else:
-        x_col = df.columns[0]  # fallback
+        x_col = df.columns[0]  # fallback to first column
 
-    return px.histogram(
+    fig = px.histogram(
         df,
         x=x_col,
         title=f"Event Counts by {x_col}",
         text_auto=True
     )
+    return fig
 
 
-# Timeline plot (Plotly version for app.py compatibility)
+# ============================================
+# Timeline plot (Plotly version)
+# ============================================
 def plot_timeline(df):
+    """Plot a timeline of events using Raise Date as the x-axis."""
     if df.empty or "Raise Date" not in df.columns:
         return px.scatter(pd.DataFrame({"No data": []}), x="No data", y="No data", title="No timeline data")
 
@@ -46,13 +53,15 @@ def plot_timeline(df):
         title="Event Timeline",
         hover_data=list(df_t.columns)
     )
-
     return fig
 
 
-# Root cause diagram placeholder
+# ============================================
+# Root Cause Diagram (PIL image placeholder)
+# ============================================
 def draw_root_cause_diagram(events):
-    img = Image.new("RGB", (600, 400), "white")
+    """Draw a simple root cause diagram as a PIL image."""
+    img = Image.new("RGB", (800, 500), "white")
     draw = ImageDraw.Draw(img)
 
     if not events:
@@ -61,15 +70,10 @@ def draw_root_cause_diagram(events):
 
     draw.text((10, 10), "Root Cause Diagram", fill="black")
     y = 50
-    for event in events[:10]:  # limit to 10
+    for event in events[:15]:  # limit to 15 for readability
         draw.text((10, y), str(event), fill="blue")
         y += 20
 
     return img
 
-
-
-# --- Backward compatibility aliases for app.py ---
-plot_timeline = plot_timeline_altair
-draw_root_cause_diagram = draw_root_cause_diagram_pil
 
