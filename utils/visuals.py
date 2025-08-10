@@ -1,82 +1,97 @@
+# utils/visuals.py
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+import altair as alt
 from PIL import Image, ImageDraw, ImageFont
-import io
 
-def plot_counts(df):
-    """Bar chart of top alarms or severities."""
-    if "Alarm Name" in df.columns and not df.empty:
-        counts = df["Alarm Name"].value_counts().reset_index()
-        counts.columns = ["Alarm Name", "Count"]
-        return px.bar(counts, x="Alarm Name", y="Count", title="Top Event Counts")
-    elif "Severity" in df.columns and not df.empty:
-        counts = df["Severity"].value_counts().reset_index()
-        counts.columns = ["Severity", "Count"]
-        return px.bar(counts, x="Severity", y="Count", title="Top Severity Counts")
-    else:
-        return px.bar(title="No Data to Display")
 
-def plot_timeline_altair(df):
-    """Timeline scatter plot for events."""
-    if "Raise Date" not in df.columns or df.empty:
-        return px.scatter(title="No timeline data")
-    try:
-        fig = px.scatter(
-            df,
-            x="Raise Date",
-            y="Alarm Name" if "Alarm Name" in df.columns else "Message",
-            color="Severity" if "Severity" in df.columns else None,
-            title="Alarm Timeline",
-            hover_data=df.columns
-        )
-        return fig
-    except Exception as e:
-        return px.scatter(title=f"Timeline error: {e}")
-
-def draw_root_cause_diagram(df):
-    """Generate a root cause diagram or a fallback sequential flow diagram."""
+def plot_timeline_altair(df: pd.DataFrame):
+    """Plot alarm/event timeline using Altair."""
     if df.empty:
-        return _fallback_image(["Log Start", "No events parsed", "Log End"])
+        return alt.Chart(pd.DataFrame({"No data": []})).mark_text(text="No data").encode()
+    if "Raise Date" not in df.columns:
+        return alt.Chart(pd.DataFrame({"No data": []})).mark_text(text="Missing Raise Date").encode()
 
-    # Prefer Alarm Name, otherwise Message
-    if "Alarm Name" in df.columns and df["Alarm Name"].notna().any():
-        events = df["Alarm Name"].dropna().astype(str).unique().tolist()
-    elif "Message" in df.columns and df["Message"].notna().any():
-        events = df["Message"].dropna().astype(str).unique().tolist()
-    else:
-        events = []
+    chart = (
+        alt.Chart(df)
+        .mark_circle(size=60)
+        .encode(
+            x="Raise Date:T",
+            y=alt.Y("Alarm Name:N", sort="-x"),
+            color="Severity:N",
+            tooltip=["Device Name", "Alarm Name", "Severity", "Raise Date", "Terminated Date", "Message", "source_file"],
+        )
+        .interactive()
+    )
+    return chart
 
-    # If we still have no events
-    if not events:
-        events = ["Log Start", "Log End"]
 
-    # Limit number of events in diagram for readability
-    if len(events) > 12:
-        events = events[:5] + ["..."] + events[-5:]
+def plot_counts(df: pd.DataFrame):
+    """Plot histogram of event/alarm counts."""
+    if df.empty or "Alarm Name" not in df.columns:
+        return px.histogram(title="No data")
+    fig = px.histogram(
+        df,
+        x="Alarm Name",
+        color="Severity" if "Severity" in df.columns else None,
+        title="Alarm/Event Counts",
+    )
+    fig.update_xaxes(categoryorder="total descending")
+    return fig
 
-    return _fallback_image(events)
 
-def _fallback_image(steps):
-    """Draw a very simple left-to-right flow diagram using Pillow."""
-    width, height = 200 * len(steps), 200
+def draw_root_cause_diagram(df: pd.DataFrame):
+    """Draw a root cause / flow diagram from log events."""
+    width, height = 900, 600
     img = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
+    try:
+        font = ImageFont.truetype("arial.ttf", 14)
+    except:
+        font = ImageFont.load_default()
 
+    if df.empty:
+        draw.text((10, 10), "No events found in file", fill="black", font=font)
+        return img
+
+    # Use Raise Date for sorting
+    if "Raise Date" in df.columns:
+        df_sorted = df.sort_values("Raise Date")
+    else:
+        df_sorted = df.copy()
+
+    # Always make a flow, even for unknown alarms
+    steps = []
+    for _, row in df_sorted.iterrows():
+        label_parts = []
+        if "Alarm Name" in row and pd.notna(row["Alarm Name"]):
+            label_parts.append(str(row["Alarm Name"]))
+        if "Severity" in row and pd.notna(row["Severity"]):
+            label_parts.append(f"({row['Severity']})")
+        if "Raise Date" in row and pd.notna(row["Raise Date"]):
+            label_parts.append(str(row["Raise Date"]))
+        steps.append(" ".join(label_parts) if label_parts else "Event")
+
+    if not steps:
+        steps = ["Log start", "Log end"]
+
+    # Layout vertically
+    y = 40
     for i, step in enumerate(steps):
-        x = i * 200 + 50
-        y = height // 2
-        draw.ellipse((x - 30, y - 30, x + 30, y + 30), fill="lightblue", outline="black")
-        text_w, text_h = draw.textsize(step, font=font)
-        draw.text((x - text_w // 2, y - text_h // 2), step, fill="black", font=font)
+        draw.rectangle([50, y - 10, width - 50, y + 20], outline="black", width=1)
+        draw.text((60, y), step, fill="black", font=font)
         if i < len(steps) - 1:
-            draw.line((x + 30, y, x + 170, y), fill="black", width=3)
+            draw.line([width // 2, y + 20, width // 2, y + 50], fill="gray", width=2)
+        y += 60
+        if y > height - 40:
+            break
 
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
+    return img
+
+
+# Keep backward compatibility with app.py
+plot_timeline = plot_timeline_altair
+
 
 
 
