@@ -1,96 +1,91 @@
 # utils/visuals.py
-import pandas as pd
+
 import plotly.express as px
-import altair as alt
-from PIL import Image, ImageDraw, ImageFont
+import plotly.graph_objects as go
+import pandas as pd
 
-
-def plot_timeline_altair(df: pd.DataFrame):
-    """Plot alarm/event timeline using Altair."""
-    if df.empty:
-        return alt.Chart(pd.DataFrame({"No data": []})).mark_text(text="No data").encode()
-    if "Raise Date" not in df.columns:
-        return alt.Chart(pd.DataFrame({"No data": []})).mark_text(text="Missing Raise Date").encode()
-
-    chart = (
-        alt.Chart(df)
-        .mark_circle(size=60)
-        .encode(
-            x="Raise Date:T",
-            y=alt.Y("Alarm Name:N", sort="-x"),
-            color="Severity:N",
-            tooltip=["Device Name", "Alarm Name", "Severity", "Raise Date", "Terminated Date", "Message", "source_file"],
+def plot_timeline(df: pd.DataFrame):
+    """Plot a timeline of alarms."""
+    if df.empty or "Raise Date" not in df.columns or "Alarm Name" not in df.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No data available for timeline",
+            xaxis_title="Date",
+            yaxis_title="Events",
+            template="plotly_white"
         )
-        .interactive()
-    )
-    return chart
+        return fig
 
-
-def plot_counts(df: pd.DataFrame):
-    """Plot histogram of event/alarm counts."""
-    if df.empty or "Alarm Name" not in df.columns:
-        return px.histogram(title="No data")
-    fig = px.histogram(
+    fig = px.scatter(
         df,
-        x="Alarm Name",
+        x="Raise Date",
+        y="Alarm Name",
         color="Severity" if "Severity" in df.columns else None,
-        title="Alarm/Event Counts",
+        hover_data=df.columns,
+        title="Alarm Timeline"
     )
-    fig.update_xaxes(categoryorder="total descending")
+    fig.update_layout(template="plotly_white", xaxis_rangeslider_visible=True)
     return fig
 
 
-def draw_root_cause_diagram(df: pd.DataFrame):
-    """Draw a root cause / flow diagram from log events."""
-    width, height = 900, 600
-    img = Image.new("RGB", (width, height), "white")
-    draw = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("arial.ttf", 14)
-    except:
-        font = ImageFont.load_default()
+def plot_counts(df: pd.DataFrame):
+    """Plot top alarm counts."""
+    if df.empty or "Alarm Name" not in df.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No data available for counts",
+            xaxis_title="Alarm Name",
+            yaxis_title="Count",
+            template="plotly_white"
+        )
+        return fig
 
-    if df.empty:
-        draw.text((10, 10), "No events found in file", fill="black", font=font)
-        return img
+    counts = df["Alarm Name"].value_counts().reset_index()
+    counts.columns = ["Alarm Name", "Count"]
 
-    # Use Raise Date for sorting
-    if "Raise Date" in df.columns:
-        df_sorted = df.sort_values("Raise Date")
-    else:
-        df_sorted = df.copy()
-
-    # Always make a flow, even for unknown alarms
-    steps = []
-    for _, row in df_sorted.iterrows():
-        label_parts = []
-        if "Alarm Name" in row and pd.notna(row["Alarm Name"]):
-            label_parts.append(str(row["Alarm Name"]))
-        if "Severity" in row and pd.notna(row["Severity"]):
-            label_parts.append(f"({row['Severity']})")
-        if "Raise Date" in row and pd.notna(row["Raise Date"]):
-            label_parts.append(str(row["Raise Date"]))
-        steps.append(" ".join(label_parts) if label_parts else "Event")
-
-    if not steps:
-        steps = ["Log start", "Log end"]
-
-    # Layout vertically
-    y = 40
-    for i, step in enumerate(steps):
-        draw.rectangle([50, y - 10, width - 50, y + 20], outline="black", width=1)
-        draw.text((60, y), step, fill="black", font=font)
-        if i < len(steps) - 1:
-            draw.line([width // 2, y + 20, width // 2, y + 50], fill="gray", width=2)
-        y += 60
-        if y > height - 40:
-            break
-
-    return img
+    fig = px.bar(
+        counts,
+        x="Alarm Name",
+        y="Count",
+        title="Top Event Counts",
+        text="Count"
+    )
+    fig.update_layout(template="plotly_white")
+    return fig
 
 
-# Keep backward compatibility with app.py
-plot_timeline = plot_timeline_altair
+def draw_root_cause_diagram(events_df: pd.DataFrame):
+    """Draw a simple root cause diagram based on alarm/event sequences."""
+    if events_df.empty or "Alarm Name" not in events_df.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No data available for root cause diagram",
+            template="plotly_white"
+        )
+        return fig
+
+    # For demo: link events in sequence
+    unique_alarms = events_df["Alarm Name"].unique()
+    edges = [(unique_alarms[i], unique_alarms[i+1]) for i in range(len(unique_alarms)-1)]
+
+    # Build a basic network diagram
+    fig = go.Figure()
+    for src, dst in edges:
+        fig.add_trace(go.Scatter(
+            x=[0, 1],
+            y=[unique_alarms.tolist().index(src), unique_alarms.tolist().index(dst)],
+            mode="lines+markers+text",
+            text=[src, dst],
+            textposition="top center",
+            line=dict(width=2, color="blue")
+        ))
+
+    fig.update_layout(
+        title="Root Cause / Event Flow Diagram",
+        showlegend=False,
+        template="plotly_white"
+    )
+    return fig
 
 
 
