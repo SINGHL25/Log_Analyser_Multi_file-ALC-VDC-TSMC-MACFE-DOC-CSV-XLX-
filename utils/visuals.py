@@ -1,91 +1,59 @@
-# utils/visuals.py
+from PIL import Image, ImageDraw, ImageFont
 
-import plotly.express as px
-import plotly.graph_objects as go
-import pandas as pd
+def draw_root_cause_diagram(df):
+    """
+    Creates a simple root cause diagram from events in a DataFrame.
+    Always returns a PIL image so Streamlit st.image() won't break.
+    """
+    # Create blank image
+    img_width, img_height = 900, 600
+    img = Image.new("RGB", (img_width, img_height), "white")
+    draw = ImageDraw.Draw(img)
 
-def plot_timeline(df: pd.DataFrame):
-    """Plot a timeline of alarms."""
-    if df.empty or "Raise Date" not in df.columns or "Alarm Name" not in df.columns:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No data available for timeline",
-            xaxis_title="Date",
-            yaxis_title="Events",
-            template="plotly_white"
-        )
-        return fig
+    try:
+        font = ImageFont.truetype("arial.ttf", 14)
+    except:
+        font = ImageFont.load_default()
 
-    fig = px.scatter(
-        df,
-        x="Raise Date",
-        y="Alarm Name",
-        color="Severity" if "Severity" in df.columns else None,
-        hover_data=df.columns,
-        title="Alarm Timeline"
-    )
-    fig.update_layout(template="plotly_white", xaxis_rangeslider_visible=True)
-    return fig
+    # If no data, show "No events"
+    if df.empty:
+        draw.text((20, 20), "No events found for this file.", fill="black", font=font)
+        return img
 
+    # Extract unique events
+    events = df["Alarm Name"].unique().tolist() if "Alarm Name" in df.columns else []
+    if not events:
+        draw.text((20, 20), "No Alarm Name data found.", fill="black", font=font)
+        return img
 
-def plot_counts(df: pd.DataFrame):
-    """Plot top alarm counts."""
-    if df.empty or "Alarm Name" not in df.columns:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No data available for counts",
-            xaxis_title="Alarm Name",
-            yaxis_title="Count",
-            template="plotly_white"
-        )
-        return fig
+    # Draw header
+    draw.text((20, 20), "Root Cause Diagram", fill="black", font=font)
 
-    counts = df["Alarm Name"].value_counts().reset_index()
-    counts.columns = ["Alarm Name", "Count"]
+    # Draw boxes for each event
+    box_width, box_height = 250, 40
+    x_start, y_start = 50, 80
+    y_gap = 70
 
-    fig = px.bar(
-        counts,
-        x="Alarm Name",
-        y="Count",
-        title="Top Event Counts",
-        text="Count"
-    )
-    fig.update_layout(template="plotly_white")
-    return fig
+    for i, event in enumerate(events):
+        top_left = (x_start, y_start + i * y_gap)
+        bottom_right = (x_start + box_width, y_start + box_height + i * y_gap)
+        draw.rectangle([top_left, bottom_right], outline="black", width=2)
+        draw.text((top_left[0] + 5, top_left[1] + 10), str(event), fill="black", font=font)
 
+        # Draw arrow to next event
+        if i < len(events) - 1:
+            arrow_start = (x_start + box_width, y_start + box_height // 2 + i * y_gap)
+            arrow_end = (x_start + box_width + 50, y_start + box_height // 2 + i * y_gap)
+            draw.line([arrow_start, arrow_end], fill="black", width=2)
+            # Arrow head
+            draw.polygon([
+                (arrow_end[0], arrow_end[1]),
+                (arrow_end[0] - 10, arrow_end[1] - 5),
+                (arrow_end[0] - 10, arrow_end[1] + 5)
+            ], fill="black")
 
-def draw_root_cause_diagram(events_df: pd.DataFrame):
-    """Draw a simple root cause diagram based on alarm/event sequences."""
-    if events_df.empty or "Alarm Name" not in events_df.columns:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No data available for root cause diagram",
-            template="plotly_white"
-        )
-        return fig
+    return img
 
-    # For demo: link events in sequence
-    unique_alarms = events_df["Alarm Name"].unique()
-    edges = [(unique_alarms[i], unique_alarms[i+1]) for i in range(len(unique_alarms)-1)]
-
-    # Build a basic network diagram
-    fig = go.Figure()
-    for src, dst in edges:
-        fig.add_trace(go.Scatter(
-            x=[0, 1],
-            y=[unique_alarms.tolist().index(src), unique_alarms.tolist().index(dst)],
-            mode="lines+markers+text",
-            text=[src, dst],
-            textposition="top center",
-            line=dict(width=2, color="blue")
-        ))
-
-    fig.update_layout(
-        title="Root Cause / Event Flow Diagram",
-        showlegend=False,
-        template="plotly_white"
-    )
-    return fig
 
 
 
